@@ -52,13 +52,19 @@ hash_length = api.Config().hash_length
 def package_key(metadata, worker_label, run='build'):
     # get the build string from whatever conda-build makes of the configuration
     used_loop_vars = metadata.get_used_loop_vars()
-    build_vars = '-'.join([k + '_' + str(metadata.config.variant[k]) for k in used_loop_vars
-                          if k != 'target_platform'])
+    build_vars = '-'.join(
+        [
+            f'{k}_{str(metadata.config.variant[k])}'
+            for k in used_loop_vars
+            if k != 'target_platform'
+        ]
+    )
+
     # kind of a special case.  Target platform determines a lot of output behavior, but may not be
     #    explicitly listed in the recipe.
     tp = metadata.config.variant.get('target_platform')
     if tp and tp != metadata.config.subdir and 'target_platform' not in build_vars:
-        build_vars += '-target_' + tp
+        build_vars += f'-target_{tp}'
     key = [metadata.name(), metadata.version()]
     if build_vars:
         key.append(build_vars)
@@ -77,8 +83,7 @@ def _git_changed_files(git_rev, stop_rev=None, git_root=''):
     print("Changed files from:", git_rev, stop_rev, git_root)
     output = subprocess.check_output(['git', '-C', git_root, 'diff-tree',
                                       '--no-commit-id', '--name-only', '-r', git_rev])
-    files = output.decode().splitlines()
-    return files
+    return output.decode().splitlines()
 
 
 def _get_base_folders(base_dir, changed_files):
@@ -134,10 +139,9 @@ def git_renamed_folders(git_rev='HEAD@{1}', stop_rev=None, git_root='.'):
     rename_script = pkg_resources.resource_filename('conda_concourse_ci',
                                                     'rename-script.sh')
 
-    renamed_files = subprocess.check_output(['bash', rename_script], cwd=git_root,
-                                             universal_newlines=True).splitlines()
-
-    return renamed_files
+    return subprocess.check_output(
+        ['bash', rename_script], cwd=git_root, universal_newlines=True
+    ).splitlines()
 
 
 def git_changed_recipes(git_rev='HEAD@{1}', stop_rev=None, git_root='.'):
@@ -288,11 +292,11 @@ def add_intradependencies(graph):
 
         test_requires = m.meta.get('test', {}).get('requires', [])
 
-        log.info("node: {}".format(node))
-        log.info("   build: {}".format(m.ms_depends('build')))
-        log.info("   host: {}".format(m.ms_depends('host')))
-        log.info("   run: {}".format(m.ms_depends('run')))
-        log.info("   test: {}".format(test_requires))
+        log.info(f"node: {node}")
+        log.info(f"   build: {m.ms_depends('build')}")
+        log.info(f"   host: {m.ms_depends('host')}")
+        log.info(f"   run: {m.ms_depends('run')}")
+        log.info(f"   test: {test_requires}")
 
         deps = set(m.ms_depends('build') + m.ms_depends('host') + m.ms_depends('run') +
                    [conda_interface.MatchSpec(dep) for dep in test_requires or []])
@@ -397,7 +401,7 @@ def construct_graph(recipes_dir, worker, run, conda_resolve, folders=(),
     for folder in folders:
         recipe_dir = os.path.join(recipes_dir, folder)
         if not os.path.isdir(recipe_dir):
-            raise ValueError("Specified folder {} does not exist".format(recipe_dir))
+            raise ValueError(f"Specified folder {recipe_dir} does not exist")
         add_recipe_to_graph(recipe_dir, graph, run, worker, conda_resolve,
                             recipes_dir, config=config, finalize=finalize)
     add_intradependencies(graph)
@@ -470,12 +474,20 @@ def add_dependency_nodes_and_edges(node, graph, run, worker, conda_resolve, reci
                 # raise ValueError("Dependency {} is not installable, and recipe (if "
                 #                  " available) can't produce desired version ({})."
                 #                  .format(dep, version))
-            dep_name = add_recipe_to_graph(recipe_dir, graph, 'build', worker,
-                                            conda_resolve, recipes_dir, config=config, finalize=finalize)
-            if not dep_name:
+            if dep_name := add_recipe_to_graph(
+                recipe_dir,
+                graph,
+                'build',
+                worker,
+                conda_resolve,
+                recipes_dir,
+                config=config,
+                finalize=finalize,
+            ):
+                graph.add_edge(node, dep_name)
+            else:
                 raise ValueError("Tried to build recipe {0} as dependency, which is skipped "
                                  "in meta.yaml".format(recipe_dir))
-            graph.add_edge(node, dep_name)
 
 
 def expand_run_upstream(graph, conda_resolve, worker, run, steps=0, max_downstream=5,

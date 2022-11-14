@@ -44,11 +44,11 @@ def verify_config(ns):
     }
     print(f"valid configs are {valid_configs}")
     if ns.config in valid_configs:
-        print("Using " + ns.config + " configuration")
+        print(f"Using {ns.config} configuration")
         return
     elif len(valid_configs) == 1:
         ns.config = valid_configs.pop()
-        print("Found " + ns.config + " configuration")
+        print(f"Found {ns.config} configuration")
     elif ns.config is None:
         print("config not selected, please choose from the following:\n")
         selections = list(enumerate(sorted(valid_configs), 1))
@@ -59,7 +59,7 @@ def verify_config(ns):
         ns.config = selections[idx][1]
         print(f"selected {ns.config}")
     else:
-        raise ValueError("config " + ns.config + " is not valid")
+        raise ValueError(f"config {ns.config} is not valid")
     # Remove the following, as implemented
     if ns.config.startswith("win"):
         raise ValueError(
